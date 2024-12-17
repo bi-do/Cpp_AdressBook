@@ -1,38 +1,113 @@
+#pragma once
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <memory>
 using namespace std;
 
+template <typename KeyType>
 class Leap;
+
+struct INDEXINFO;
+
+/**실제 데이터 */
 typedef struct USERDATA
 {
-    int age;
+    unsigned int age;
     string name;
     string phone;
     string description;
+
 } USERDATA;
-typedef struct USERDATAINDEX
+
+template <typename T>
+class USERDATAINDEX
 {
-    vector<USERDATA *> userdata;
-    Leap *PerentLeap = nullptr;
-    int key;
+private:
+    vector<INDEXINFO *> userdata;
+    Leap<T> *PerentLeap = nullptr;
+    T key;
+
+public:
+    USERDATAINDEX(T key)
+    {
+        this->key = key;
+    }
     ~USERDATAINDEX()
     {
-        for (USERDATA *element : userdata)
+        for (INDEXINFO *element : userdata)
         {
             delete element;
         }
         // cout << key << "데이터 삭제" << endl;
         this->userdata.clear();
     }
-} USERDATAINDEX;
 
+    void setKey(T key)
+    {
+        this->key = key;
+    }
+
+    void setParent(Leap<T> &pLeap)
+    {
+        this->PerentLeap = &pLeap;
+    }
+
+    vector<INDEXINFO *> &getUserAdt()
+    {
+        return this->userdata;
+    }
+
+    T &getKey()
+    {
+        return this->key;
+    }
+
+    Leap<T> *getParent()
+    {
+        return this->PerentLeap;
+    }
+
+    void pushData(INDEXINFO &pData)
+    {
+        pData.setIndexParent(*this);
+        userdata.push_back(&pData);
+    };
+};
+
+/**중앙 집권 인덱스 */
+typedef struct INDEXINFO
+{
+    USERDATA *user;
+    USERDATAINDEX<unsigned int> *ageIndex;
+    USERDATAINDEX<string> *nameIndex;
+    INDEXINFO(USERDATA &pData)
+    {
+        this->user = &pData;
+    }
+    ~INDEXINFO()
+    {
+        delete user;
+    }
+    void setIndexParent(USERDATAINDEX<unsigned int> &pParent)
+    {
+        ageIndex = &pParent;
+    }
+    void setIndexParent(USERDATAINDEX<string> &pParent)
+    {
+        nameIndex = &pParent;
+    }
+} INDEXINFO;
+
+/**각 트리 별 중복값 저장 컨테이너 ( 중복된 키값의 데이터도 담을수 있도록 함 )*/
+
+template <typename KeyType>
 class Node
 {
 private:
     bool isLeap;
     vector<Node *> child;
-    vector<int> keys;
+    vector<KeyType> keys;
     Node *parent = nullptr;
 
     /**부모에 대한 자신의 인덱스 */
@@ -41,9 +116,9 @@ private:
 public:
     explicit Node() {};
 
-    Node(USERDATA &pParam)
+    Node(KeyType key, USERDATA &pParam)
     {
-        this->keys.push_back(pParam.age);
+        this->keys.push_back(key);
     };
     virtual ~Node()
     {
@@ -51,15 +126,13 @@ public:
         {
             delete element;
         }
-        for (int element : keys)
+        if (this->isLeap != true)
         {
-            if (this->isLeap == true)
+            for (KeyType element : keys)
             {
-                // cout << element << " 리프 노드 삭제" << endl;
+                cout << element << '\t';
             }
-            else
-                // cout << element << " 노드 삭제" << endl;
-                ;
+            cout << " 노드 삭제" << endl;
         }
         child.clear();
         keys.clear();
@@ -79,7 +152,7 @@ public:
         return this->child;
     }
 
-    vector<int> &getKeys()
+    vector<KeyType> &getKeys()
     {
         return this->keys;
     }
@@ -115,7 +188,7 @@ public:
         }
     }
 
-    void pushKey(int param)
+    void pushKey(KeyType param)
     {
         this->keys.push_back(param);
         sort(this->keys.begin(), this->keys.end());
@@ -147,7 +220,7 @@ public:
 
     virtual Node *getRightSibling()
     {
-        if (indexByParent >= parent->getChilds().size())
+        if (indexByParent >= parent->getChilds().size() - 1)
         {
             return nullptr;
         }
@@ -166,24 +239,28 @@ public:
     }
 };
 
-class Internal : public Node
+template <typename KeyType>
+class Internal : public Node<KeyType>
 {
 public:
     explicit Internal() {};
-    Internal(USERDATA &pParam) : Node(pParam) {
+    Internal(USERDATA &pParam) : Node<KeyType>(pParam) {
                                  };
     ~Internal()
     {
     }
 };
 
-class Leap : public Node
+template <typename KeyType>
+class Leap : public Node<KeyType>
 {
-    vector<USERDATAINDEX *> userdata;
+    vector<USERDATAINDEX<KeyType> *> userdata;
     Leap *next = nullptr;
     Leap *prev = nullptr;
 
 public:
+    using Node = Node<KeyType>;
+    using USERDATAINDEX = USERDATAINDEX<KeyType>;
     Leap()
     {
         this->changeLeap();
@@ -197,8 +274,10 @@ public:
     {
         for (USERDATAINDEX *element : userdata)
         {
+            cout << element->getKey() << '\t';
             delete element;
         }
+        cout << "리프 노드 삭제" << endl;
         this->userdata.clear();
     }
     void setPrev(Leap *pParam)
@@ -218,18 +297,19 @@ public:
         return this->next;
     }
 
-    void pushData(USERDATA &pParam, int index)
+    void pushData(INDEXINFO &pParam, int index)
     {
-        this->userdata[index]->userdata.push_back(&pParam);
+        USERDATAINDEX *tmpIndex = this->userdata[index];
+        tmpIndex->getUserAdt().push_back(&pParam);
     }
 
-    void NewKey(USERDATA *pParam)
+    void NewKey(KeyType Keyparam, INDEXINFO &pParam)
     {
-        this->pushKey(pParam->age);
-        USERDATAINDEX *newDataArr = new USERDATAINDEX();
-        newDataArr->userdata.push_back(pParam);
-        newDataArr->key = pParam->age;
-        newDataArr->PerentLeap = this;
+        this->pushKey(Keyparam);
+        USERDATAINDEX *newDataArr = new USERDATAINDEX(Keyparam);
+        newDataArr->pushData(pParam);
+        newDataArr->setKey(Keyparam);
+        newDataArr->setParent(*this);
         userdata.push_back(newDataArr);
         sort(userdata.begin(), userdata.end(), indexCompareByKey);
     }
@@ -238,7 +318,7 @@ public:
     {
         for (USERDATAINDEX *element : this->userdata)
         {
-            element->PerentLeap = this;
+            element->setParent(*this);
         }
     }
     vector<USERDATAINDEX *> &getUserData()
@@ -248,12 +328,12 @@ public:
 
     static bool indexCompareByKey(USERDATAINDEX *a, USERDATAINDEX *b)
     {
-        return a->key < b->key;
+        return a->getKey() < b->getKey();
     }
 
     Leap *getRightSibling() override
     {
-        if (this->getIndexByParent() >= this->getParent()->getChilds().size())
+        if (this->getIndexByParent() >= this->getParent()->getChilds().size() - 1)
         {
             return nullptr;
         }
@@ -270,15 +350,34 @@ public:
         else
             return static_cast<Leap *>(this->getParent()->getChilds()[this->getIndexByParent() - 1]);
     }
+    Node *getInternalIndexNode()
+    {
+        KeyType key = this->getKeys().front();
+
+        Node *curNode = this->getParent();
+        while (curNode != nullptr)
+        {
+            for (KeyType element : curNode.getKeys())
+            {
+                if (element == key)
+                {
+                    return curNode;
+                }
+            }
+            curNode = curNode->getParent();
+        }
+        cout << "인덱스 없음" << endl;
+        return nullptr;
+    }
 
     USERDATAINDEX &getSuccesor(Leap &pNode, int Param)
     {
         Leap *curLeap = &pNode;
-        USERDATAINDEX &succesor = *curLeap->getUserData().front();
+        USERDATAINDEX *succesor = curLeap->getUserData().front();
         int index = 0;
-        while (succesor.key > Param)
+        while (succesor->getKey() <= Param)
         {
-            succesor = *curLeap->getUserData()[index];
+            succesor = curLeap->getUserData()[index];
             index++;
             if (curLeap->getKeys().size() == index)
             {
@@ -286,20 +385,25 @@ public:
                 index = 0;
             }
         }
-        return succesor;
+        return *succesor;
     }
 };
+
+template <typename KeyType>
 class Module
 {
 private:
-    Node *rootNode = nullptr;
-    Leap *firstStart = nullptr;
+    Node<KeyType> *rootNode = nullptr;
+    Leap<KeyType> *firstStart = nullptr;
     int maxChild = 3;
     int maxKey = maxChild - 1;
     int minChild = (maxChild + 1) / 2;
     int minKey = minChild - 1;
 
 public:
+    using Node = Node<KeyType>;
+    using Leap = Leap<KeyType>;
+    using USERDATAINDEX = USERDATAINDEX<KeyType>;
     Module()
     {
     }
@@ -307,29 +411,41 @@ public:
     {
         delete rootNode;
     }
-    /**새로운 데이터 삽입 */
-    void NewNode(USERDATA &pParam)
+
+    void ClearAllLeapData()
     {
-        int key = pParam.age;
+        Leap *curLeap = this->firstStart;
+        while (curLeap != nullptr)
+        {
+            for (USERDATAINDEX *element : curLeap->getUserData())
+            {
+                element->getUserAdt().clear();
+            }
+            curLeap = curLeap->getNext();
+        }
+    }
+
+    /**새로운 데이터 삽입 */
+    void NewNode(KeyType keyparam, INDEXINFO &pParam)
+    {
+        KeyType key = keyparam;
         /**데이터 처음 삽입 시 */
         if (rootNode == nullptr)
         {
-            Node &newNode = *new Internal();
+            Node &newNode = *new Internal<KeyType>();
             rootNode = &newNode;
             Leap &dummy = *new Leap();
             Leap &newLeap = *new Leap();
 
-            dummy.serParent(&newNode);
-            newLeap.serParent(&newLeap);
-
             this->firstStart = &dummy;
-            newLeap.NewKey(&pParam);
-            newNode.pushKey(pParam.age);
+            newLeap.NewKey(keyparam, pParam);
+            newNode.pushKey(keyparam);
 
             dummy.setNext(&newLeap);
             newLeap.setPrev(&dummy);
             newNode.pushChild(dummy);
             newNode.pushChild(newLeap);
+            newNode.initializeParent();
             return;
         }
         else
@@ -337,12 +453,13 @@ public:
             Node *curNode = rootNode;
             Node *parent = curNode;
             int index;
+
             while (parent->checkLeap() != true)
             {
                 index = 0;
                 if (curNode->checkLeap() != true)
                 {
-                    for (int element : curNode->getKeys())
+                    for (KeyType element : curNode->getKeys())
                     {
                         if (element > key)
                         {
@@ -357,7 +474,7 @@ public:
                 else
                 {
                     Leap *curLeap = static_cast<Leap *>(curNode);
-                    for (int element : curNode->getKeys())
+                    for (KeyType element : curNode->getKeys())
                     {
                         if (element == key)
                         {
@@ -368,12 +485,14 @@ public:
                         else
                             index++;
                     }
-                    curLeap->NewKey(&pParam);
+                    curLeap->NewKey(keyparam, pParam);
+                    /**현재 노드의 키 수가 최대 키 수를 넘었다면 */
                     while (curNode->getKeys().size() > maxKey)
                     {
+                        /**현재 노드가 루트노드라면 */
                         if (curNode == rootNode)
                         {
-                            parent = new Internal();
+                            parent = new Internal<KeyType>();
                             rootNode = parent;
                             curNode->serParent(parent);
                             parent->pushChild(*curNode);
@@ -381,12 +500,13 @@ public:
                         int middleIndex = ((curNode->getKeys().size()) / 2);
                         parent->pushKey(curNode->getKeys()[middleIndex]);
                         Node *newNode;
-
+                        /**현재 노드가 리프노드라면 */
                         if (curNode->checkLeap() == true)
                         {
                             newNode = new Leap();
                             Leap *newLeap = static_cast<Leap *>(newNode);
                             newLeap->getUserData().insert(newLeap->getUserData().end(), curLeap->getUserData().begin() + middleIndex, curLeap->getUserData().end());
+                            newLeap->initializeData();
                             curLeap->getUserData().erase(curLeap->getUserData().begin() + middleIndex, curLeap->getUserData().end());
                             newNode->getKeys().insert(newNode->getKeys().end(), curNode->getKeys().begin() + middleIndex, curNode->getKeys().end());
                             curLeap->setNext(newLeap);
@@ -394,7 +514,7 @@ public:
                         }
                         else
                         {
-                            newNode = new Internal();
+                            newNode = new Internal<KeyType>();
                             newNode->getKeys().insert(newNode->getKeys().end(), curNode->getKeys().begin() + middleIndex + 1, curNode->getKeys().end());
                             newNode->getChilds().insert(newNode->getChilds().end(), curNode->getChilds().begin() + middleIndex + 1, curNode->getChilds().end());
                             newNode->initializeParent();
@@ -403,6 +523,8 @@ public:
                         }
                         newNode->serParent(parent);
                         parent->pushChild(*newNode);
+                        parent->initializeChildIndex();
+                        parent->initializeParent();
                         curNode->getKeys().erase(curNode->getKeys().begin() + middleIndex, curNode->getKeys().end());
                         curNode = parent;
                         parent = curNode->getParent();
@@ -413,18 +535,15 @@ public:
             }
         }
     }
-
-    Leap *SearchByAge(int min, int max, int &dataIndex, vector<Node *> &passTemp)
+    Leap *SearchByKey(KeyType min, KeyType max, int &dataIndex, vector<Node *> &passTemp)
     {
         Node *curNode = this->rootNode;
-
         /**현재 노드가 리프노드일때까지 */
         while (curNode->checkLeap() != true)
         {
             int index = 0;
-            for (int element : curNode->getKeys())
+            for (KeyType element : curNode->getKeys())
             {
-
                 if (min < element)
                 {
                     break;
@@ -436,66 +555,79 @@ public:
             curNode = curNode->getChilds()[index];
         }
         int index = 0;
-        vector<USERDATA *> searchCol;
         Leap *curLeap = static_cast<Leap *>(curNode);
-        while (curLeap->getUserData()[index]->key <= max)
+        while (curLeap == this->firstStart || curLeap->getUserData()[index]->getKey() <= max)
         {
-            if (curLeap->getUserData()[index]->key > min)
+            if (curLeap->getUserData().size() > 0 && curLeap->getUserData()[index]->getKey() >= min)
             {
                 dataIndex = index;
                 return curLeap;
             }
             else
                 index++;
-
-            if (index == curLeap->getKeys().size())
+            if (index >= curLeap->getKeys().size())
             {
                 curLeap = curLeap->getNext();
                 index = 0;
             }
         }
-
         return nullptr;
     }
 
     /**노드 삭제 */
-    void DeleteData(Leap &pLeap, USERDATAINDEX &pIndex, USERDATA &pData, vector<Node *> &passTemp)
+    void DeleteData(Leap &pLeap, INDEXINFO &pIndex, USERDATA &pData, vector<Node *> &passTemp)
     {
-        int index = 0;
-        int key = pIndex.key;
-        for (USERDATA *element : pIndex.userdata)
+        USERDATAINDEX *temp;
+        if (is_same<KeyType, unsigned int>::value)
         {
-            if (&pData == element)
+            temp = pIndex.ageIndex;
+        }
+        else
+            temp = pIndex.nameIndex;
+        int index = 0;
+        KeyType key = pIndex.getKey();
+        for (INDEXINFO *element : pIndex.getUserAdt())
+        {
+            if (&pData == element->user)
             {
-                pIndex.userdata.erase(pIndex.userdata.begin() + index);
-                delete &pData;
+                temp.getUserAdt().erase(pIndex.getUserAdt().begin() + index);
                 break;
             }
             else
                 index++;
         }
+        this->IndexReconciliation(pLeap, *temp, pData, passTemp);
+    }
 
+    /**인덱싱 재조정 */
+    void IndexReconciliation(Leap &pLeap, USERDATAINDEX &pIndex, USERDATA &pData, vector<Node *> &passTemp)
+    {
         /**만약 삭제한 데이터가 해당되는 키가 비어있는 경우 */
-        if (pIndex.userdata.size() == 0)
+        if (pIndex.getUserAdt().size() == 0)
         {
             /**인덱싱 변환 */
-            if (&pLeap != firstStart && &pIndex == pLeap.getUserData()[0] && (pLeap.getNext() != nullptr || pLeap.getUserData().size() > 0))
+            if (&pLeap != firstStart && &pIndex == pLeap.getUserData()[0] && (pLeap.getNext() != nullptr || pLeap.getUserData().size() > 1))
             {
-
                 for (Node *element : passTemp)
                 {
-                    for (int &elementKey : element->getKeys())
+                    bool flag = false;
+                    for (KeyType &elementKey : element->getKeys())
                     {
                         if (elementKey == key)
                         {
-                            elementKey = pLeap.getSuccesor(pLeap, key).key;
+                            elementKey = pLeap.getSuccesor(pLeap, key).getKey();
+                            flag = true;
                             break;
                         }
+                    }
+                    if (flag == true)
+                    {
+                        break;
                     }
                 }
             }
             int dataIndex = 0;
-            for (int element : pLeap.getKeys())
+            for (KeyType element : pLeap.getKeys())
             {
                 if (key == element)
                 {
@@ -507,7 +639,6 @@ public:
                 else
                     dataIndex++;
             }
-
             Node *curNode = &pLeap;
             Node *curParent = pLeap.getParent();
             /**키 삭제 후 해당 리프노드의 키 수가 최소 키 수보다 적을 경우 */
@@ -524,11 +655,24 @@ public:
                         rootNode = curNode;
                         rootNode->serParent(nullptr);
                         /**모든 데이터가 삭제되었을 시 */
-                        if (curNode->getChilds().front()->getKeys().size() == 0)
+                        if (curNode->checkLeap() == true)
                         {
-                            delete rootNode;
-                            this->rootNode = nullptr;
-                            return;
+                            if (curNode->getKeys().size() == 0)
+                            {
+                                delete rootNode;
+                                this->firstStart = nullptr;
+                                this->rootNode = nullptr;
+                                return;
+                            }
+                            else
+                            {
+                                Leap &dummy = *new Leap();
+                                rootNode = new Internal<KeyType>();
+                                rootNode->pushKey(curNode->getKeys().front());
+                                rootNode->pushChild(dummy);
+                                rootNode->pushChild(*curNode);
+                                rootNode->initializeParent();
+                            }
                         }
                     }
                     else
@@ -546,8 +690,9 @@ public:
                         {
                             Leap *leftSibling = pLeap.getPrev();
                             pLeap.getUserData().insert(pLeap.getUserData().begin(), leftSibling->getUserData().back());
-                            pLeap.getUserData().front()->PerentLeap = &pLeap;
+                            pLeap.getUserData().front()->setParent(pLeap);
                             leftSibling->getUserData().pop_back();
+                            curNode->pushKey(leftSibling->getKeys().back());
                         }
                         else
                         {
@@ -555,9 +700,8 @@ public:
                             curNode->initializeChildIndex();
                             curNode->initializeParent();
                             leftSibling->getChilds().pop_back();
+                            curNode->pushKey(curParent->getKeys()[curNode->getIndexByParent() - 1]);
                         }
-
-                        curNode->pushKey(curParent->getKeys()[curNode->getIndexByParent() - 1]);
                         curParent->getKeys()[curNode->getIndexByParent() - 1] = leftSibling->getKeys().back();
                         leftSibling->getKeys().pop_back();
                         break;
@@ -570,8 +714,9 @@ public:
                         {
                             Leap *RightSibling = pLeap.getNext();
                             pLeap.getUserData().insert(pLeap.getUserData().begin(), RightSibling->getUserData().front());
-                            pLeap.getUserData().back()->PerentLeap = &pLeap;
+                            pLeap.getUserData().back()->setParent(pLeap);
                             RightSibling->getUserData().erase(RightSibling->getUserData().begin());
+                            curNode->pushKey(RightSibling->getKeys().front());
                         }
                         else
                         {
@@ -579,10 +724,10 @@ public:
                             curNode->initializeChildIndex();
                             curNode->initializeParent();
                             RightSibling->getChilds().erase(RightSibling->getChilds().begin());
+                            curNode->pushKey(curParent->getKeys()[curNode->getIndexByParent()]);
                         }
-                        curNode->pushKey(curParent->getKeys()[curNode->getIndexByParent()]);
-                        curParent->getKeys()[curNode->getIndexByParent()] = RightSibling->getKeys().front();
                         RightSibling->getKeys().erase(RightSibling->getKeys().begin());
+                        curParent->getKeys()[curNode->getIndexByParent()] = RightSibling->getKeys().front();
                         break;
                     }
                     /**양쪽 형제의 키가 불충분할 때*/
@@ -669,7 +814,7 @@ public:
 
         while (curLeap != nullptr)
         {
-            for (int element : curLeap->getKeys())
+            for (KeyType element : curLeap->getKeys())
             {
                 cout << element << '\t';
             }
@@ -685,10 +830,10 @@ public:
         {
             for (USERDATAINDEX *element : curLeap->getUserData())
             {
-                for (USERDATA *data : element->userdata)
+                for (INDEXINFO *data : element->getUserAdt())
                 {
                     ++count;
-                    cout << '[' << count << "]\t" << "나이 : " << data->age << " 이름 : " << data->name << " 휴대전화 : " << data->phone << endl;
+                    cout << '[' << count << "]\t" << "나이 : " << data->user->age << " 이름 : " << data->user->name << " 휴대전화 : " << data->user->phone << endl;
                 }
             }
             curLeap = curLeap->getNext();
